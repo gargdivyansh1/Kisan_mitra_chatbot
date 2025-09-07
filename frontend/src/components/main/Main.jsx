@@ -195,7 +195,7 @@ const Main = () => {
     const conversation_of_current_session = async (session_id) => {
         console.log(session_id)
         try {
-            const res = await axios.get(`http://127.0.0.1:8000/farmer_query/session/${session_id}/history`);
+            const res = await axios.get(`https://kisan-mitra-chatbot-2.onrender.com/farmer_query/session/${session_id}/history`);
             return res.data;
         } catch (err) {
             console.error("Error fetching conversation:", err);
@@ -205,7 +205,7 @@ const Main = () => {
 
     const all_session_of_user = async (user_id) => {
         try {
-            const res = await axios.get(`http://127.0.0.1:8000/farmer_query/allSession_user/${user_id}`);
+            const res = await axios.get(`https://kisan-mitra-chatbot-2.onrender.com/farmer_query/allSession_user/${user_id}`);
             return res.data;
         } catch (err) {
             console.error("Error fetching session for the user:", err);
@@ -228,7 +228,7 @@ const Main = () => {
         let req = sessions.find(s => s.active)?.title
 
         try {
-            const response = await axios.post("http://127.0.0.1:8000/farmer_query/chat", {
+            const response = await axios.post("https://kisan-mitra-chatbot-2.onrender.com/farmer_query/chat", {
                 user_id: user_id,
                 message: input,
                 session_id: req !== "नया_सत्र"
