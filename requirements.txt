@@ -3,3 +3,4 @@ langchain-openai
 langchain-core
 langchain-community
 pinecone-client
+uvicorn
