@@ -4,9 +4,9 @@ from backend.app.routes import farmer_route
 
 app = FastAPI(title="Kisan Mitra Chatbot API", version="1.0.0")
 
-app.head('/uptime')
+@app.head("/uptime")
 def run():
-    return {'status': 200}
+    return {"status": "OK"}
 
 app.add_middleware(
     CORSMiddleware,
