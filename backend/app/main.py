@@ -1,8 +1,12 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import farmer_route
+from backend.app.routes import farmer_route
 
 app = FastAPI(title="Kisan Mitra Chatbot API", version="1.0.0")
+
+app.head('/uptime')
+def run():
+    return {'status': 200}
 
 app.add_middleware(
     CORSMiddleware,

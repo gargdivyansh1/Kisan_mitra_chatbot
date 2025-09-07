@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter
-from app.index import run_conversation, get_thread_memory, getting_all_threads_for_user
-from app.schema import ChatRequest, ChatResponse, ChatMessage
+from backend.app.index import run_conversation, get_thread_memory, getting_all_threads_for_user
+from backend.app.schema import ChatRequest, ChatResponse, ChatMessage
 from typing import List
 
 router = APIRouter(
