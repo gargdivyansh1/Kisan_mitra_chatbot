@@ -298,11 +298,11 @@ const Main = () => {
                             </button>
                         )}
                         <div className="hidden sm:block">
-                            <p className="text-xl sm:text-2xl font-bold tracking-wide font-sans">Kisan Mitra</p>
+                            <p className="text-xl sm:text-2xl font-bold tracking-wide font-sans">KisanMitra</p>
                             <p className="text-xs sm:text-sm text-amber-100 mt-1 font-medium">आपका कृषि सहयोगी</p>
                         </div>
                         <div className="sm:hidden">
-                            <p className="text-xl font-bold font-sans">Kisan Mitra</p>
+                            <p className="text-xl font-bold font-sans">KisanMitra</p>
                         </div>
                     </div>
 
