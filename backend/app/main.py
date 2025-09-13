@@ -1,12 +1,11 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.routes import farmer_route
 
-app = FastAPI(title="Kisan Mitra Chatbot API", version="1.0.0")
+from backend.app.routes.farmer_route import router as farmer_route  
+from backend.app.database import init_db
+from backend.app.logic import run_conversation_stream
 
-@app.head("/uptime")
-def run():
-    return {"status": "OK"}
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,5 +15,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(farmer_route.router)
+init_db()
 
+app.include_router(farmer_route)
+
+@app.websocket("/ws/{user_id}/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await run_conversation_stream(user_id, session_id, data, websocket)
+    except WebSocketDisconnect:
+        print(f"WebSocket disconnected for {user_id}-{session_id}")
