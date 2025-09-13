@@ -1,8 +1,10 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
-import { assets } from "../../assets/assets";
 import { FaRegPlusSquare } from "react-icons/fa";
 import { PiTextAlignJustify } from "react-icons/pi";
+import { IoClose } from "react-icons/io5";
 import axios from "axios";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 const farmer_questions = [
   "इस मौसम में उगाने के लिए सबसे अच्छी फसलें",
@@ -31,12 +33,12 @@ const farmer_questions = [
   "कृषि बीमा लेने की प्रक्रिया और लाभ"
 ];
 
-const Main = () => {
-  const user_id = "random_user3";
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+const ChatBot = () => {
+  const user_id = "random_user_new";
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
-  const [val, setValue] = useState("0");
+  const [val, setValue] = useState(0);
   const [input, setInput] = useState("");
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -58,52 +60,80 @@ const Main = () => {
   }, [conversations]);
 
   useEffect(() => {
-    const fetchSessions = async () => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    const initializeNewSession = async () => {
       try {
         const sessionIds = await all_session_of_user(user_id);
+        let newSessionId;
+        
         if (sessionIds.length > 0) {
           const formattedSessions = sessionIds.map((sessionId, index) => ({
             id: sessionId,
             title: sessionId,
             active: index === 0
           }));
+
           setSessions(formattedSessions);
           setActiveSessionId(formattedSessions[0].id);
         } else {
+          newSessionId = `${user_id}}`;
           const defaultSession = {
-            id: `default`,
-            title: "सामान्य_चर्चा",
+            id: newSessionId,
+            title: "नया_सत्र",
             active: true
           };
           setSessions([defaultSession]);
-          setActiveSessionId(defaultSession.id);
+          setActiveSessionId(newSessionId);
         }
-      } catch {
+      } catch (error) {
+        console.error("Error initializing session:", error);
+        const newSessionId = `${user_id}`;
         const defaultSession = {
-          id: `${user_id}_default`,
-          title: "सामान्य_चर्चा",
+          id: newSessionId,
+          title: "नया_सत्र",
           active: true
         };
         setSessions([defaultSession]);
-        setActiveSessionId(defaultSession.id);
+        setActiveSessionId(newSessionId);
       }
     };
-    fetchSessions();
-  }, [setValue, val]);
+
+    initializeNewSession();
+  }, []);
 
   useEffect(() => {
     const fetchConversationHistory = async () => {
-      if (activeSessionId) {
+      const currentSession = sessions.find(s => s.id === activeSessionId);
+
+      if (currentSession && currentSession.title !== "नया_सत्र") {
         try {
-          const history = await conversation_of_current_session(activeSessionId);
+          const history = await conversation_of_current_session(currentSession.id);
           setConversations(history);
-        } catch {
+        } catch (error) {
+          console.error("Error fetching conversation history:", error);
           setConversations([]);
         }
+      } else {
+        setConversations([]);
       }
     };
-    fetchConversationHistory();
-  }, [activeSessionId]);
+
+    if (activeSessionId) {
+      fetchConversationHistory();
+    }
+  }, [activeSessionId, sessions]);
 
   const startListening = () => {
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
@@ -132,34 +162,36 @@ const Main = () => {
         active: session.id === id
       }))
     );
+    
+    if (window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   };
 
   const createNewSession = () => {
-    const newSessionId = `${user_id}_session_${Date.now()}`;
+    const newSessionId = `${user_id}`;
     const newSession = {
       id: newSessionId,
       title: "नया_सत्र",
-      active: true
+      active: true,
     };
-    setSessions(prev => [newSession, ...prev]);
+
+    setSessions(prevSessions => [
+      newSession,
+      ...prevSessions.map(session => ({ ...session, active: false })),
+    ]);
     setActiveSessionId(newSessionId);
     setConversations([]);
+    
+    if (window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   };
 
   function formatMarkdown(text) {
     if (!text) return "";
-    let formatted = text;
-    formatted = formatted.replace(/^### (.*)$/gm, "<h3 class='font-semibold text-lg mt-2'>$1</h3>");
-    formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-    formatted = formatted.replace(/(?:^- .*(?:\n|$))+?/gm, (match) => {
-      const items = match
-        .trim()
-        .split("\n")
-        .map(line => line.replace(/^- (.*)$/, "<li class='ml-6 list-disc'>$1</li>"))
-        .join("");
-      return `<ul>${items}</ul>`;
-    });
-    return formatted;
+    const rawHtml = marked.parse(text, { breaks: true });
+    return DOMPurify.sanitize(rawHtml);
   }
 
   const conversation_of_current_session = async (session_id) => {
@@ -187,23 +219,42 @@ const Main = () => {
       content: input,
       timestamp: new Date().toISOString()
     };
+    const messageToSend = input;
+
     setConversations(prev => [...prev, userMessage]);
+    setInput("");
     setLoading(true);
-    let req = sessions.find(s => s.active)?.title;
+
+    const currentSession = sessions.find(s => s.id === activeSessionId);
+    const isNewSession = currentSession.title === "नया_सत्र";
     try {
       const response = await axios.post("http://127.0.0.1:8000/farmer_query/chat", {
         user_id: user_id,
-        message: input,
-        session_id: req !== "नया_सत्र" ? `${req}` : `${input}`
+        message: messageToSend,
+        session_id: isNewSession ? `${messageToSend}` : currentSession.id
       });
-      setValue(val + 1);
+
+      if (isNewSession) {
+        const newSessionIdFromServer = `${messageToSend}_${Date.now()}`;
+        setSessions(prevSessions =>
+          prevSessions.map(session =>
+            session.id === activeSessionId
+              ? { ...session, title: messageToSend, id: newSessionIdFromServer }
+              : session
+          )
+        );
+        setActiveSessionId(newSessionIdFromServer);
+      }
+
       const botMessage = {
         type: "bot",
         content: formatMarkdown(response.data.response || "कोई उत्तर उपलब्ध नहीं है।"),
         timestamp: new Date().toISOString()
       };
+
       setConversations(prev => [...prev, botMessage]);
-    } catch {
+    } catch (error) {
+      console.error("Error calling backend API:", error);
       const errorMessage = {
         type: "bot",
         content: "सर्वर से उत्तर प्राप्त नहीं हो सका।",
@@ -212,16 +263,17 @@ const Main = () => {
       setConversations(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
-      setInput("");
     }
   };
 
   return (
     <div className="flex min-h-screen bg-gradient-to-b from-amber-50 to-emerald-50">
-      <div className={`${sidebarOpen ? "w-64" : "w-0"} transition-all duration-300 bg-gradient-to-b from-emerald-800 to-emerald-900 text-white overflow-hidden flex flex-col`}>
+      <div className={`${sidebarOpen ? "w-64 fixed md:relative inset-0 z-50 md:z-auto" : "w-0"} transition-all duration-300 bg-gradient-to-b from-emerald-800 to-emerald-900 text-white overflow-hidden flex flex-col`}>
         <div className="p-4 flex items-center justify-between border-b border-emerald-700">
           <h2 className="text-xl font-bold">सत्र</h2>
-          <button onClick={() => setSidebarOpen(false)} className="p-1 rounded hover:bg-emerald-700">✕</button>
+          <button onClick={() => setSidebarOpen(false)} className="p-1 rounded hover:bg-emerald-700">
+            <IoClose size={24} />
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           <button
@@ -236,11 +288,18 @@ const Main = () => {
               onClick={() => selectSession(session.id)}
               className={`p-3 rounded-lg mb-2 cursor-pointer transition ${session.active ? "bg-emerald-600" : "hover:bg-emerald-700"}`}
             >
-              <p className="text-sm">{session.title}</p>
+              <p className="text-sm truncate">{session.title}</p>
             </div>
           ))}
         </div>
       </div>
+
+      {sidebarOpen && window.innerWidth < 768 && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       <div className="flex-1 min-h-screen flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 bg-gradient-to-r from-emerald-800 to-amber-800 text-white shadow-md">
@@ -259,11 +318,11 @@ const Main = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            <img src={assets.user} alt="user" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-amber-200 shadow-md" />
+            <img src="public/user.jpg" alt="user" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-amber-200 shadow-md" />
           </div>
         </div>
 
-        <div className="flex-1 w-full max-w-4xl mx-auto px-3 py-4 sm:px-4 sm:py-6 md:py-8 no-scrollbar">
+        <div className="flex-1 w-full max-w-4xl max-h-screen mx-auto px-3 py-4 sm:px-4 sm:py-6 md:py-8 no-scrollbar">
           {conversations.length === 0 ? (
             <>
               <div className="my-6 sm:my-8 text-center">
@@ -279,7 +338,7 @@ const Main = () => {
                   >
                     <div className="flex items-start">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center p-2 mr-3 sm:mr-4">
-                        <img src={assets.compass_icon} alt="question" className="w-5 h-5 sm:w-6 sm:h-6" />
+                        <img src="public/compass_icon.png" alt="question" className="w-5 h-5 sm:w-6 sm:h-6" />
                       </div>
                       <p className="text-emerald-900 font-medium text-base sm:text-lg leading-tight">{question}</p>
                     </div>
@@ -296,24 +355,18 @@ const Main = () => {
                       <p className="text-emerald-900 font-medium text-sm sm:text-base">{message.content}</p>
                     </div>
                     <div className="ml-2 sm:ml-3 flex-shrink-0">
-                      <img src={assets.user} alt="user" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-amber-300 shadow" />
+                      <img src="public/user.jpg" alt="user" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-amber-300 shadow" />
                     </div>
                   </div>
                 ) : (
                   <div key={index} className="flex items-start gap-2 sm:gap-3 md:gap-4">
                     <div className="flex-shrink-0">
                       <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200 shadow">
-                        <img src={assets.gemini_icon} alt="bot" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                        <img src="gemini_icon.png" alt="bot" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
                       </div>
                     </div>
                     <div className="bg-emerald-50 text-emerald-900 px-4 py-3 sm:px-5 sm:py-4 rounded-xl sm:rounded-2xl shadow max-w-[85%] sm:max-w-[80%] border border-emerald-200">
-                      <div className="text-sm sm:text-base leading-relaxed">
-                        {message.content && message.content.startsWith("<") ? (
-                          <div dangerouslySetInnerHTML={{ __html: message.content }} />
-                        ) : (
-                          <p>{message.content}</p>
-                        )}
-                      </div>
+                      <div className="text-base leading-relaxed prose" dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content) }} />
                     </div>
                   </div>
                 )
@@ -322,7 +375,7 @@ const Main = () => {
                 <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
                   <div className="flex-shrink-0">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200 shadow">
-                      <img src={assets.gemini_icon} alt="bot" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                      <img src="gemini_icon.png" alt="bot" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
                     </div>
                   </div>
                   <div className="bg-emerald-50 text-emerald-900 px-4 py-3 sm:px-5 sm:py-4 rounded-xl sm:rounded-2xl shadow max-w-[85%] sm:max-w-[80%] border border-emerald-200">
@@ -359,14 +412,14 @@ const Main = () => {
                 onClick={startListening}
                 className={`p-2 sm:p-3 rounded-full cursor-pointer transition ${listening ? "bg-emerald-300/50" : "hover:bg-amber-100/50"}`}
               >
-                <img src={assets.mic_icon} alt="आवाज" className="w-5 sm:w-6 md:w-6 h-5 sm:h-6 md:h-6" />
+                <img src="mic_icon.png" alt="आवाज" className="w-5 sm:w-6 md:w-6 h-5 sm:h-6 md:h-6" />
               </div>
               <button
                 onClick={handleSend}
                 disabled={loading || !input.trim()}
                 className="bg-emerald-700 hover:bg-emerald-800 p-2 sm:p-3 rounded-lg sm:rounded-xl transition shadow-md hover:shadow-lg disabled:opacity-70"
               >
-                <img src={assets.send_icon} alt="भेजें" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 invert" />
+                <img src="public/send_icon.png" alt="भेजें" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 invert" />
               </button>
             </div>
           </div>
@@ -379,4 +432,4 @@ const Main = () => {
   );
 };
 
-export default Main;
+export default ChatBot;
